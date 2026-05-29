@@ -1,0 +1,40 @@
+name: Credit Risk Model CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8 pytest pytest-cov
+
+      - name: Run Linter (flake8)
+        run: |
+          flake8 src/ tests/ --count --show-source --statistics
+          # Exit with error if any linting issues
+          flake8 src/ tests/ --exit-zero
+
+      - name: Run Unit Tests
+        run: |
+          pytest tests/ -v --cov=src
+
+      - name: Test Docker Build
+        run: |
+          docker build -t credit-risk-api .

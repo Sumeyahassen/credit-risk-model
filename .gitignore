@@ -1,0 +1,18 @@
+# Data
+data/raw/*
+data/processed/*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# OS
+.DS_Store
