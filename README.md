@@ -1,9 +1,14 @@
 # Credit Risk Probability Model for Bati Bank
 
-**End-to-End Implementation using Alternative Data (RFM + Machine Learning)**
+**End-to-End Credit Risk Scoring using Alternative Data (RFM + Machine Learning)**
+
+---
 
 ## Project Overview
-This project builds a credit scoring model for Bati Bank's Buy-Now-Pay-Later (BNPL) service in partnership with an eCommerce platform. The model uses transaction behavioral data to predict customer credit risk.
+
+This project develops a complete **credit risk probability model** for Bati Bank's Buy-Now-Pay-Later (BNPL) service in partnership with an eCommerce platform (Xente). 
+
+Since the dataset does not contain an explicit default label, we engineered a **proxy target** using customer behavioral data and deployed the solution as a production-ready REST API.
 
 ---
 
@@ -11,60 +16,86 @@ This project builds a credit scoring model for Bati Bank's Buy-Now-Pay-Later (BN
 
 ### 1. How does the Basel II Accord influence modeling choices?
 
-The Basel II Capital Accord is the international standard for banking regulation. It requires banks to maintain sufficient capital to cover credit risk.
+The Basel II Capital Accord sets international standards for banking regulation with strong emphasis on:
 
-**Key Influences on Our Model:**
-- **Pillar 1 (Minimum Capital)**: Requires accurate estimation of **Probability of Default (PD)**. Our model must output a reliable risk probability.
-- **Model Validation & Documentation**: Every step (feature selection, proxy target definition, model choice) must be well documented and justifiable to regulators.
-- **Interpretability**: Regulators prefer transparent models. This is why we will consider Logistic Regression with Weight of Evidence (WoE) alongside more complex models like Random Forest or XGBoost.
-- **Ongoing Monitoring**: The model must be monitored for performance degradation over time.
+- Accurate **Probability of Default (PD)** estimation
+- Model **interpretability** and transparency
+- Thorough **documentation** and validation
+- Ongoing performance monitoring
 
-In the Ethiopian banking context, compliance with Basel II (or similar local regulations from National Bank of Ethiopia) is critical for risk management.
+**Our Approach**: We prioritized interpretability, reproducibility, and documentation throughout the project to align with regulatory expectations, especially in the Ethiopian banking context under the National Bank of Ethiopia.
 
 ### 2. Why do we need a Proxy Variable? What are the business risks?
 
-The Xente dataset does **not** contain an explicit "default" label. Therefore, we cannot directly train a supervised model.
+The Xente dataset has no direct "default" label. Therefore, a **proxy target** (`is_high_risk`) was created using **RFM Analysis + K-Means Clustering**.
 
-**Solution**: We create a **proxy target** (`is_high_risk`) using **RFM Analysis + K-Means Clustering**.
+**Business Risks**:
+- Misclassification of customers (lost revenue or increased bad debt)
+- Concept drift over time
+- Regulatory scrutiny on proxy validity
+- Potential bias in customer segmentation
 
-**Business Risks of Using Proxy:**
-- **Misclassification Risk**: Some low-engagement customers might be good payers → lost business opportunities.
-- **Concept Drift**: Customer behavior can change over time, making the proxy less accurate.
-- **Regulatory Challenge**: Auditors may question the validity of the proxy. We must provide strong justification and backtesting.
-- **Bias Risk**: If RFM features correlate with demographic factors, it could introduce unintended bias.
+### 3. Trade-offs: Interpretable vs High-Performance Models
 
-### 3. Trade-offs Between Interpretable vs High-Performance Models
+| Aspect                    | Interpretable (Logistic Regression + WoE) | Complex (Random Forest / XGBoost) |
+|---------------------------|-------------------------------------------|-----------------------------------|
+| Interpretability          | Very High                                 | Low (needs SHAP)                  |
+| Regulatory Acceptance     | High                                      | Medium                            |
+| Predictive Performance    | Moderate                                  | Higher                            |
+| Training Speed            | Fast                                      | Slower                            |
+| Business Use Case         | Regulatory scorecard                      | Internal decisioning              |
+| Overfitting Risk          | Lower                                     | Higher                            |
 
-| Aspect                    | Interpretable Model (Logistic Regression + WoE) | Complex Model (XGBoost / Random Forest) |
-|--------------------------|------------------------------------------------|---------------------------------------|
-| Interpretability         | Very High (easy to explain to risk team)      | Low (needs SHAP values)              |
-| Regulatory Acceptance    | High                                           | Medium (requires extra documentation)|
-| Predictive Performance   | Moderate                                       | Usually Higher                       |
-| Implementation Speed     | Fast                                           | Slower                               |
-| Business Use Case        | Scorecard for loan approval & audit           | Internal ranking + ensemble          |
-| Risk of Overfitting      | Lower                                          | Higher                               |
-
-**Our Strategy**: Start with interpretable models for regulatory comfort, then compare with powerful models. Use SHAP for explainability on complex models.
+**Strategy**: We trained both types of models and selected based on performance while maintaining documentation.
 
 ---
 
-## Project Goals
-- Define proxy target using RFM
-- Build reproducible feature engineering pipeline
-- Train and compare multiple models using MLflow
-- Deploy model as FastAPI service
-- Set up CI/CD pipeline
+## Key EDA Insights (Task 2)
 
-**Team**: Sumeya (Analytics Engineer at Bati Bank)
-## Task-2
-## Key EDA Insights
+1. **High Class Imbalance**: `FraudResult` is extremely imbalanced (~0.2% fraud) and cannot be used as the target variable.
+2. **Transaction Nature**: `Amount` contains negative values (refunds/credits). We used `Value` (absolute amount) for monetary calculations.
+3. **Customer Behavior**: 95,662 transactions from **3,742 unique customers** (average ~25.56 transactions per customer).
+4. **High Variation**: Some customers made over 4,000 transactions, while many are low-activity — justifying customer-level aggregation.
+5. **Constant Features**: `CountryCode` and `CurrencyCode` have no variation and were dropped.
+6. **Time Feature**: `TransactionStartTime` was converted to datetime for RFM calculations.
 
-1. **High Class Imbalance**: `FraudResult` cannot be used as target variable (only ~0.2% fraud cases).
+---
 
-2. **Transaction Nature**: `Amount` has negative values (refunds/credits). We should use `Value` for monetary calculations.
+## Methodology
 
-3. **Multiple Transactions per Customer**: We must aggregate data at `CustomerId` level.
+### Proxy Target Creation (RFM + Clustering)
 
-4. **Constant Columns**: `CountryCode` and `CurrencyCode` have no variation → can be dropped.
+We calculated **RFM** features and applied K-Means clustering (4 clusters):
 
-5. **Time Feature**: `TransactionStartTime` needs to be converted to datetime for RFM analysis.
+| Cluster | Recency | Frequency | Monetary   | Risk Label    |
+|---------|---------|-----------|------------|---------------|
+| 0       | 61.84   | 7.73      | 90,694     | **High Risk** |
+| 1       | 29.00   | 4091      | 104.9M     | Very Low Risk |
+| 2       | 12.69   | 34.72     | 224k       | Low Risk      |
+| 3       | 21.33   | 109       | 64.87M     | Medium Risk   |
+
+**High-risk customers** = Cluster 0 (disengaged / low activity).
+
+### Feature Engineering
+
+- Aggregated transaction data to **CustomerId** level
+- Created statistical features (`AvgValue`, `StdValue`, `MaxValue`, etc.)
+- Handled missing values with median imputation
+- Standardized numerical features
+
+### Model Training & Results
+
+Models were trained with proper NaN handling and tracked using **MLflow**.
+
+**Final Model Performance:**
+
+| Model                  | ROC-AUC | F1 Score | Precision | Recall | Accuracy |
+|------------------------|---------|----------|-----------|--------|----------|
+| Logistic Regression    | 0.9998  | 0.9972   | 0.9944    | 1.0000 | 0.9979   |
+| **Random Forest**      | **1.0000** | **0.9958** | **0.9917** | **1.0000** | **0.9968** |
+
+**Best Model**: Random Forest
+
+---
+
+## Project Structure
